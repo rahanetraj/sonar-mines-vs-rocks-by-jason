@@ -169,6 +169,39 @@ curl -X POST https://sonar-api.onrender.com/predict \
 
 ---
 
+## Interface Web
+
+Un frontend visuel est disponible dans `frontend/index.html` (fichier unique, aucune dépendance sauf Chart.js CDN).
+
+### Ouvrir en local
+
+```bash
+# Option 1 — ouvrir directement dans le navigateur
+open frontend/index.html          # macOS
+xdg-open frontend/index.html      # Linux
+
+# Option 2 — serveur local
+python3 -m http.server 3000 --directory frontend
+# puis aller sur http://localhost:3000
+```
+
+### Héberger sur GitHub Pages
+
+1. Aller dans **Settings → Pages** du repo GitHub
+2. Source : `Deploy from a branch`
+3. Branch : `main`, dossier : `/frontend`
+4. L'interface sera disponible à :
+   `https://<username>.github.io/<repo>/`
+
+### Fonctionnalités
+- 60 sliders F1–F60 avec visualisation en temps réel (Chart.js)
+- Lignes de référence Mine / Rocher sur le graphique
+- Boutons : Exemple Mine, Exemple Rocher, Aléatoire, Coller JSON
+- Carte de résultat animée avec jauge de confiance
+- Historique des 5 dernières prédictions
+
+---
+
 ## Résultats du modèle
 
 | Métrique | Score |
