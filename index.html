@@ -24,6 +24,126 @@
       --warn:      #d29922;
       --radius:    10px;
       --shadow:    0 4px 24px rgba(0,0,0,.5);
+      --drift-ok:  #3fb950;
+      --drift-bad: #f85149;
+      --drift-unk: #8b949e;
+    }
+
+    /* ── Monitoring dashboard ─────────────────────────────── */
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 0;
+    }
+    @media (max-width: 700px) { .monitor-grid { grid-template-columns: 1fr; } }
+
+    .monitor-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+    }
+    .monitor-card h3 {
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    /* stat rows */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: .875rem;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: var(--muted); }
+    .stat-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* donut chart */
+    .donut-wrap {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin: 0 auto 16px;
+    }
+    #donutLegend {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: .78rem;
+      margin-bottom: 14px;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+
+    /* drift badge */
+    .drift-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      border-radius: 99px;
+      font-size: .875rem;
+      font-weight: 700;
+      letter-spacing: .4px;
+    }
+    .drift-badge.ok  { background: rgba(63,185,80,.15);  color: var(--drift-ok);  border: 1px solid var(--drift-ok); }
+    .drift-badge.bad { background: rgba(248,81,73,.15);  color: var(--drift-bad); border: 1px solid var(--drift-bad); }
+    .drift-badge.unk { background: rgba(139,148,158,.12); color: var(--drift-unk); border: 1px solid var(--drift-unk); }
+
+    /* drift score bar */
+    .score-track {
+      height: 10px;
+      background: var(--surface2);
+      border-radius: 5px;
+      overflow: hidden;
+      margin: 10px 0 6px;
+    }
+    .score-fill {
+      height: 100%;
+      border-radius: 5px;
+      background: linear-gradient(90deg, var(--rock), var(--warn), var(--mine));
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* feature badges */
+    .feat-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .feat-badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: .76rem;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* refresh timestamp */
+    .refresh-ts {
+      font-size: .72rem;
+      color: var(--muted);
+      text-align: right;
+      margin-top: 12px;
+      opacity: .7;
     }
 
     html { scroll-behavior: smooth; }
@@ -510,6 +630,44 @@
     </div>
   </section>
 
+  <!-- ── Monitoring dashboard ──────────────────────────────── -->
+  <section style="padding-bottom:8px;">
+    <h2><span>📊</span> Tableau de bord monitoring</h2>
+
+    <div class="monitor-grid">
+
+      <!-- Stats card -->
+      <div class="monitor-card">
+        <h3><span>📈</span> Statistiques globales</h3>
+        <div class="donut-wrap">
+          <canvas id="donutChart"></canvas>
+        </div>
+        <div id="donutLegend">
+          <span><span class="legend-dot" style="background:var(--mine)"></span>Mine</span>
+          <span><span class="legend-dot" style="background:var(--rock)"></span>Rocher</span>
+        </div>
+        <div id="stats-rows">
+          <div class="stat-row"><span class="stat-label">Prédictions totales</span><span class="stat-value" id="s-total">—</span></div>
+          <div class="stat-row"><span class="stat-label">💣 Mines</span><span class="stat-value" style="color:var(--mine)" id="s-mine-pct">—</span></div>
+          <div class="stat-row"><span class="stat-label">🪨 Rochers</span><span class="stat-value" style="color:var(--rock)" id="s-rock-pct">—</span></div>
+          <div class="stat-row"><span class="stat-label">Confiance moyenne</span><span class="stat-value" id="s-conf">—</span></div>
+          <div class="stat-row"><span class="stat-label">Dernière prédiction</span><span class="stat-value" id="s-last" style="font-size:.78rem">—</span></div>
+        </div>
+        <div class="refresh-ts" id="stats-ts"></div>
+      </div>
+
+      <!-- Drift card -->
+      <div class="monitor-card">
+        <h3><span>🔍</span> Statut de drift</h3>
+        <div id="drift-content">
+          <p style="color:var(--muted);font-size:.875rem;">Chargement…</p>
+        </div>
+        <div class="refresh-ts" id="drift-ts"></div>
+      </div>
+
+    </div><!-- /monitor-grid -->
+  </section>
+
 </div>
 
 <!-- Toast erreur -->
@@ -852,10 +1010,142 @@ function showToast(msg) {
 }
 
 /* ══════════════════════════════════════════════════════
+   MONITORING — STATS
+══════════════════════════════════════════════════════ */
+let donutChart;
+
+function buildDonut(mineCount, rockCount) {
+  const ctx = document.getElementById('donutChart').getContext('2d');
+  const data = [mineCount || 0, rockCount || 0];
+
+  if (donutChart) {
+    donutChart.data.datasets[0].data = data;
+    donutChart.update();
+    return;
+  }
+
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Mine', 'Rocher'],
+      datasets: [{
+        data,
+        backgroundColor: [
+          'rgba(248,81,73,.85)',
+          'rgba(63,185,80,.85)',
+        ],
+        borderColor: ['#f85149', '#3fb950'],
+        borderWidth: 2,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '70%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161b22',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          titleColor: '#e6edf3',
+          bodyColor: '#8b949e',
+        }
+      }
+    }
+  });
+}
+
+async function loadStats() {
+  try {
+    const resp = await fetch(`${API_URL}/monitoring/stats`);
+    if (!resp.ok) return;
+    const d = await resp.json();
+
+    buildDonut(d.mine_count, d.rock_count);
+
+    document.getElementById('s-total').textContent    = d.total_predictions;
+    document.getElementById('s-mine-pct').textContent = `${d.mine_count} (${d.mine_percentage}%)`;
+    document.getElementById('s-rock-pct').textContent = `${d.rock_count} (${d.rock_percentage}%)`;
+    document.getElementById('s-conf').textContent     = `${(d.avg_confidence * 100).toFixed(1)}%`;
+    document.getElementById('s-last').textContent     = d.last_prediction_time
+      ? new Date(d.last_prediction_time + 'Z').toLocaleString('fr-FR')
+      : '—';
+
+    document.getElementById('stats-ts').textContent =
+      'Mis à jour : ' + new Date().toLocaleTimeString('fr-FR');
+  } catch {}
+}
+
+/* ══════════════════════════════════════════════════════
+   MONITORING — DRIFT
+══════════════════════════════════════════════════════ */
+async function loadDrift() {
+  try {
+    const resp = await fetch(`${API_URL}/monitoring/drift`);
+    if (!resp.ok) return;
+    const d = await resp.json();
+    const el = document.getElementById('drift-content');
+
+    if (d.message) {
+      el.innerHTML = `<p style="color:var(--muted);font-size:.875rem;">⚠ Aucun rapport de drift disponible.<br>
+        <small>Lancez : <code>python monitoring/drift_report.py</code></small></p>`;
+    } else {
+      const detected  = d.drift_detected;
+      const score     = Math.round((d.drift_score || 0) * 100);
+      const nDrifted  = d.drifted_features || 0;
+      const featNames = (d.drifted_feature_names || []).slice(0, 5);
+      const ts        = d.timestamp ? new Date(d.timestamp + 'Z').toLocaleString('fr-FR') : '';
+
+      const badgeCls  = detected ? 'bad' : 'ok';
+      const badgeTxt  = detected ? '⚠ DRIFT DÉTECTÉ' : '✅ PAS DE DRIFT';
+
+      const badges = featNames.map(f =>
+        `<span class="feat-badge">${f}</span>`
+      ).join('');
+
+      el.innerHTML = `
+        <div style="margin-bottom:14px;">
+          <span class="drift-badge ${badgeCls}">${badgeTxt}</span>
+        </div>
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">
+          Score de drift
+          <strong style="color:var(--text);float:right;">${score}%</strong>
+        </div>
+        <div class="score-track"><div class="score-fill" style="width:${score}%"></div></div>
+        <div class="stat-row" style="margin-top:10px;">
+          <span class="stat-label">Features driftées</span>
+          <span class="stat-value">${nDrifted} / 60</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Rapport généré</span>
+          <span class="stat-value" style="font-size:.76rem;">${ts}</span>
+        </div>
+        ${featNames.length ? `<div class="feat-badges">${badges}</div>` : ''}
+      `;
+    }
+
+    document.getElementById('drift-ts').textContent =
+      'Mis à jour : ' + new Date().toLocaleTimeString('fr-FR');
+  } catch {}
+}
+
+/* ══════════════════════════════════════════════════════
+   AUTO-REFRESH (toutes les 30 secondes)
+══════════════════════════════════════════════════════ */
+function refreshMonitoring() {
+  loadStats();
+  loadDrift();
+}
+
+/* ══════════════════════════════════════════════════════
    INIT
 ══════════════════════════════════════════════════════ */
 buildSliders();
 buildChart();
+refreshMonitoring();                          // chargement initial
+setInterval(refreshMonitoring, 30_000);       // rafraîchissement automatique
 </script>
 </body>
 </html>

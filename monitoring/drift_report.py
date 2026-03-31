@@ -1,30 +1,38 @@
 """
 Détection de data drift avec Evidently.
 Compare les données de référence (train) avec les données courantes (prédictions récentes).
-Génère un rapport HTML dans monitoring/reports/drift_report.html
+Génère des rapports HTML dans monitoring/reports/
 """
 
-import sys
 import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 # Evidently
 from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
+from evidently.metric_preset import DataDriftPreset, DataQualityPreset
 from evidently.metrics import DatasetDriftMetric, ColumnDriftMetric
 
 REPORTS_DIR = ROOT / "monitoring" / "reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 FEATURE_NAMES = [f"F{i}" for i in range(1, 61)]
+# CSV columns use lowercase f1..f60; map to F1..F60 for Evidently
+CSV_FEATURE_NAMES = [f"f{i}" for i in range(1, 61)]
 
+
+# ─────────────────────────────────────────────────────────────
+# 1. Chargement des données de référence
+# ─────────────────────────────────────────────────────────────
 def load_reference_data(params_path: Path = None) -> pd.DataFrame:
-    """Charge les données d'entraînement comme référence."""
+    """Charge les données d'entraînement (features uniquement) comme référence."""
     import yaml
     params_path = params_path or ROOT / "params.yaml"
     with open(params_path) as f:
@@ -48,115 +56,193 @@ def load_reference_data(params_path: Path = None) -> pd.DataFrame:
         random_state=params["model"]["random_state"],
         stratify=y,
     )
+    print(f"[DRIFT] Données de référence : {X_train.shape[0]} échantillons, {X_train.shape[1]} features")
     return X_train.reset_index(drop=True)
 
 
+# ─────────────────────────────────────────────────────────────
+# 2. Chargement des données courantes
+# ─────────────────────────────────────────────────────────────
 def load_current_data(predictions_log: Path = None) -> pd.DataFrame:
     """
-    Charge les données courantes depuis un CSV de logs de prédictions.
-    Si le fichier n'existe pas, simule avec du bruit sur les données de référence.
+    Charge les données courantes depuis data/predictions_log.csv.
+    - Ne garde que les colonnes features (f1..f60).
+    - Renomme en F1..F60 pour la cohérence avec les données de référence.
+    - Quitte si moins de 10 prédictions disponibles.
     """
-    predictions_log = predictions_log or ROOT / "monitoring" / "predictions_log.csv"
+    predictions_log = predictions_log or ROOT / "data" / "predictions_log.csv"
 
-    if predictions_log.exists():
-        df = pd.read_csv(predictions_log)
-        # Garde uniquement les colonnes features
-        available = [c for c in FEATURE_NAMES if c in df.columns]
-        if len(available) == 60:
-            print(f"[DRIFT] Données courantes chargées : {len(df)} échantillons")
-            return df[FEATURE_NAMES].reset_index(drop=True)
+    if not predictions_log.exists():
+        print(f"[DRIFT] ⚠  Fichier introuvable : {predictions_log}")
+        print("[DRIFT] Lancez d'abord l'API et envoyez des requêtes POST /predict.")
+        sys.exit(1)
 
-    print("[DRIFT] Fichier predictions_log.csv introuvable — simulation de drift artificiel.")
-    ref = load_reference_data()
-    # Simulation : ajout de bruit gaussien pour créer un drift détectable
-    rng = np.random.default_rng(42)
-    noise = rng.normal(loc=0.05, scale=0.08, size=ref.shape)
-    current = (ref.values + noise).clip(0.0, 1.0)
-    return pd.DataFrame(current, columns=FEATURE_NAMES)
+    df = pd.read_csv(predictions_log)
+
+    # Vérification du nombre minimum d'échantillons
+    n_rows = len(df)
+    if n_rows < 10:
+        print(f"[DRIFT] ⚠  Seulement {n_rows} prédiction(s) disponible(s) (minimum : 10).")
+        print("[DRIFT] Effectuez davantage de prédictions via POST /predict, puis relancez ce script.")
+        sys.exit(1)
+
+    # Sélectionner et renommer les colonnes features
+    available_csv = [c for c in CSV_FEATURE_NAMES if c in df.columns]
+    if len(available_csv) != 60:
+        print(f"[DRIFT] ⚠  Colonnes features manquantes dans le log ({len(available_csv)}/60).")
+        sys.exit(1)
+
+    current = df[available_csv].copy()
+    # Renommer f1→F1, f2→F2, …
+    rename_map = {f"f{i}": f"F{i}" for i in range(1, 61)}
+    current.rename(columns=rename_map, inplace=True)
+
+    print(f"[DRIFT] Données courantes : {current.shape[0]} prédictions loggées")
+    return current.reset_index(drop=True)
 
 
+# ─────────────────────────────────────────────────────────────
+# 3. Rapport de drift (DataDriftPreset)
+# ─────────────────────────────────────────────────────────────
 def generate_drift_report(
     reference: pd.DataFrame,
     current: pd.DataFrame,
     output_path: Path = None,
 ) -> dict:
     """
-    Génère le rapport de drift Evidently et retourne un résumé JSON.
+    Génère le rapport de drift Evidently et retourne un résumé.
+    Sauvegarde le rapport HTML dans monitoring/reports/drift_report.html.
     """
     output_path = output_path or REPORTS_DIR / "drift_report.html"
+
+    # Construire les métriques ColumnDriftMetric pour chaque feature
+    col_drift_metrics = [ColumnDriftMetric(column_name=f) for f in FEATURE_NAMES]
 
     report = Report(metrics=[
         DataDriftPreset(),
         DatasetDriftMetric(),
+        *col_drift_metrics,
     ])
     report.run(reference_data=reference, current_data=current)
     report.save_html(str(output_path))
+    print(f"[DRIFT] Rapport drift HTML sauvegardé : {output_path}")
 
-    # Extraction du résumé de drift
+    # Extraction du résumé depuis le dict interne
     result = report.as_dict()
-    dataset_drift_result = None
-    drifted_features = []
+    dataset_drift_result = {}
+    drifted_features: list[str] = []
 
     for metric in result.get("metrics", []):
         metric_id = metric.get("metric", "")
+        res = metric.get("result", {})
 
         if "DatasetDriftMetric" in metric_id:
-            res = metric.get("result", {})
             dataset_drift_result = {
-                "drift_detected" : res.get("dataset_drift", False),
-                "drift_share"    : res.get("drift_share", 0.0),
-                "n_features"     : res.get("number_of_columns", 60),
-                "n_drifted"      : res.get("number_of_drifted_columns", 0),
+                "drift_detected": res.get("dataset_drift", False),
+                "drift_share"   : res.get("drift_share", 0.0),
+                "n_features"    : res.get("number_of_columns", 60),
+                "n_drifted"     : res.get("number_of_drifted_columns", 0),
             }
 
         if "ColumnDriftMetric" in metric_id:
-            res = metric.get("result", {})
             if res.get("drift_detected"):
                 drifted_features.append(res.get("column_name", "?"))
 
     return {
-        "dataset": dataset_drift_result,
+        "dataset"         : dataset_drift_result,
         "drifted_features": drifted_features,
-        "report_path": str(output_path),
+        "report_path"     : str(output_path),
     }
 
 
+# ─────────────────────────────────────────────────────────────
+# 4. Rapport qualité (DataQualityPreset)
+# ─────────────────────────────────────────────────────────────
+def generate_quality_report(
+    reference: pd.DataFrame,
+    current: pd.DataFrame,
+    output_path: Path = None,
+) -> None:
+    """
+    Génère le rapport de qualité des données Evidently.
+    Sauvegarde dans monitoring/reports/quality_report.html.
+    """
+    output_path = output_path or REPORTS_DIR / "quality_report.html"
+
+    report = Report(metrics=[DataQualityPreset()])
+    report.run(reference_data=reference, current_data=current)
+    report.save_html(str(output_path))
+    print(f"[DRIFT] Rapport qualité HTML sauvegardé : {output_path}")
+
+
+# ─────────────────────────────────────────────────────────────
+# 5. Affichage du résumé
+# ─────────────────────────────────────────────────────────────
 def print_summary(summary: dict) -> None:
     """Affiche un résumé lisible du drift détecté."""
-    ds = summary.get("dataset") or {}
+    ds      = summary.get("dataset") or {}
+    drifted = summary.get("drifted_features", [])
+
     print("\n" + "=" * 55)
     print("       RÉSUMÉ — RAPPORT DE DATA DRIFT (Evidently)")
     print("=" * 55)
-    drift_detected = ds.get("drift_detected", "N/A")
-    print(f"  Drift global détecté : {drift_detected}")
-    print(f"  Part de features driftées : {ds.get('drift_share', 0)*100:.1f}%")
-    print(f"  Features driftées : {ds.get('n_drifted', '?')} / {ds.get('n_features', 60)}")
+    print(f"  Drift global détecté      : {ds.get('drift_detected', 'N/A')}")
+    print(f"  Score de drift            : {ds.get('drift_share', 0):.4f}")
+    print(f"  Features driftées         : {ds.get('n_drifted', '?')} / {ds.get('n_features', 60)}")
 
-    if summary["drifted_features"]:
-        print(f"  Liste : {', '.join(summary['drifted_features'][:10])}")
-        if len(summary["drifted_features"]) > 10:
-            print(f"          ... et {len(summary['drifted_features']) - 10} autres")
+    if drifted:
+        top5 = drifted[:5]
+        print(f"  Liste des features        : {', '.join(top5)}", end="")
+        if len(drifted) > 5:
+            print(f"  … et {len(drifted) - 5} autres", end="")
+        print()
 
-    print(f"\n  Rapport HTML : {summary['report_path']}")
+    print(f"\n  Rapport HTML drift   : {summary['report_path']}")
     print("=" * 55)
 
 
+# ─────────────────────────────────────────────────────────────
+# 6. Sauvegarde des métriques JSON
+# ─────────────────────────────────────────────────────────────
+def save_drift_metrics(summary: dict) -> None:
+    """
+    Sauvegarde les métriques de drift au format JSON normalisé
+    dans monitoring/reports/drift_metrics.json.
+    """
+    ds      = summary.get("dataset") or {}
+    drifted = summary.get("drifted_features", [])
+
+    metrics = {
+        "timestamp"            : datetime.utcnow().isoformat(),
+        "total_features"       : 60,
+        "drifted_features"     : ds.get("n_drifted", len(drifted)),
+        "drift_detected"       : ds.get("drift_detected", False),
+        "drift_score"          : round(ds.get("drift_share", 0.0), 4),
+        "drifted_feature_names": drifted,
+    }
+
+    out_path = REPORTS_DIR / "drift_metrics.json"
+    with open(out_path, "w") as f:
+        json.dump(metrics, f, indent=2, default=str)
+    print(f"[DRIFT] Métriques JSON sauvegardées : {out_path}")
+
+
+# ─────────────────────────────────────────────────────────────
+# Point d'entrée
+# ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("[DRIFT] Chargement des données de référence (train)...")
+    print("[DRIFT] Chargement des données de référence (train)…")
     reference = load_reference_data()
-    print(f"[DRIFT] Référence : {reference.shape}")
 
-    print("[DRIFT] Chargement des données courantes...")
+    print("[DRIFT] Chargement des données courantes (prédictions loggées)…")
     current = load_current_data()
-    print(f"[DRIFT] Courant   : {current.shape}")
 
-    print("[DRIFT] Génération du rapport Evidently...")
+    print("[DRIFT] Génération du rapport de drift Evidently…")
     summary = generate_drift_report(reference, current)
 
-    print_summary(summary)
+    print("[DRIFT] Génération du rapport de qualité Evidently…")
+    generate_quality_report(reference, current)
 
-    # Sauvegarde du résumé JSON
-    summary_path = REPORTS_DIR / "drift_summary.json"
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2, default=str)
-    print(f"[DRIFT] Résumé JSON : {summary_path}")
+    print_summary(summary)
+    save_drift_metrics(summary)
+    print("\n[DRIFT] ✅ Terminé.")

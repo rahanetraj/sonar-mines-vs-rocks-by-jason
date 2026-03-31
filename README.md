@@ -211,3 +211,100 @@ python3 -m http.server 3000 --directory frontend
 | AUC-ROC | 99.1% |
 
 Modèle : **RandomForestClassifier** (100 arbres, random_state=42)
+
+---
+
+## Monitoring
+
+Le pipeline intègre un système complet de monitoring basé sur [Evidently](https://www.evidentlyai.com/) pour détecter le data drift en production.
+
+### Fonctionnement
+
+```
+POST /predict
+    │
+    ▼
+data/predictions_log.csv   ← journal de toutes les prédictions (thread-safe)
+    │
+    ▼
+monitoring/drift_report.py ← compare avec les données d'entraînement
+    │
+    ▼
+monitoring/reports/
+  ├── drift_report.html     ← rapport Evidently interactif
+  ├── quality_report.html   ← rapport qualité des données
+  └── drift_metrics.json    ← métriques JSON (lu par /monitoring/drift)
+```
+
+### Lancer le rapport de drift manuellement
+
+```bash
+# Prérequis : avoir au moins 10 prédictions dans data/predictions_log.csv
+python monitoring/drift_report.py
+```
+
+Le script :
+1. Charge les données d'entraînement comme référence (F1–F60)
+2. Charge les prédictions loggées depuis `data/predictions_log.csv`
+3. Génère deux rapports HTML Evidently (drift + qualité)
+4. Affiche un résumé dans le terminal
+5. Sauvegarde `monitoring/reports/drift_metrics.json`
+
+### Endpoints de monitoring
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| `GET` | `/monitoring/stats` | Statistiques agrégées (total, % mine/roche, confiance moyenne) |
+| `GET` | `/monitoring/recent` | 20 dernières prédictions en JSON |
+| `GET` | `/monitoring/drift` | Métriques drift depuis le dernier rapport Evidently |
+
+#### Exemple — `/monitoring/stats`
+
+```bash
+curl http://localhost:8000/monitoring/stats
+# {
+#   "total_predictions": 42,
+#   "mine_count": 18,
+#   "rock_count": 24,
+#   "mine_percentage": 42.86,
+#   "rock_percentage": 57.14,
+#   "avg_confidence": 0.8721,
+#   "last_prediction_time": "2026-03-31T08:30:00.123456"
+# }
+```
+
+#### Exemple — `/monitoring/drift`
+
+```bash
+curl http://localhost:8000/monitoring/drift
+# {
+#   "timestamp": "2026-03-31T08:30:00",
+#   "total_features": 60,
+#   "drifted_features": 3,
+#   "drift_detected": false,
+#   "drift_score": 0.05,
+#   "drifted_feature_names": ["F12", "F34", "F47"]
+# }
+```
+
+### Lire le rapport de drift
+
+- **`drift_detected: true`** → au moins 50 % des features ont drifté (seuil Evidently par défaut)
+- **`drift_score`** → proportion de features driftées (0 = aucune, 1 = toutes)
+- **`drifted_feature_names`** → liste des features dont la distribution a changé significativement
+- Ouvrir `monitoring/reports/drift_report.html` dans un navigateur pour le rapport interactif complet
+
+### Automatisation GitHub Actions
+
+Le workflow `.github/workflows/monitoring.yml` s'exécute :
+- **Automatiquement** toutes les 6 heures (`cron: '0 */6 * * *'`)
+- **Manuellement** via *Actions → scheduled-monitoring → Run workflow*
+
+Il entraîne le modèle, génère les rapports et commite automatiquement les fichiers mis à jour dans `monitoring/reports/`.
+
+### Interface de monitoring
+
+Le frontend `index.html` affiche un tableau de bord en temps réel :
+- **Carte statistiques** : graphique donut Mine/Rocher, confiance moyenne, dernière prédiction
+- **Carte drift** : statut (vert/rouge), score sous forme de barre de progression, top 5 features driftées
+- Rafraîchissement automatique toutes les **30 secondes**

@@ -1,0 +1,35 @@
+name: scheduled-monitoring
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # toutes les 6 heures
+  workflow_dispatch:          # déclenchement manuel possible
+
+jobs:
+  run-monitoring:
+    name: Drift Report (Evidently)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Installation des dépendances
+        run: pip install -r requirements.txt
+
+      - name: Entraînement du modèle (requis pour les données de référence)
+        run: python src/train.py --stage train
+
+      - name: Exécution du rapport de drift
+        run: python monitoring/drift_report.py
+
+      - name: Commit du rapport de drift
+        run: |
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add monitoring/reports/
+          git diff --staged --quiet || git commit -m "chore: update drift report [skip ci]"
+          git push
