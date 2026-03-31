@@ -1,0 +1,5 @@
+outs:
+- md5: 77f5ca97c7b87b3edd3639a4ebc24e5c
+  size: 87776
+  hash: md5
+  path: sonar.all-data.csv

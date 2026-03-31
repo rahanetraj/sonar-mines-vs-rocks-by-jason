@@ -1,0 +1,49 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+
+  # ─────────────────────────────────────────
+  # JOB 1 : Tests unitaires
+  # ─────────────────────────────────────────
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Installation des dépendances
+        run: pip install -r requirements.txt
+
+      - name: Entraînement du modèle (requis pour les tests API)
+        run: python src/train.py --stage train
+
+      - name: Exécution des tests pytest
+        run: pytest tests/ -v
+
+  # ─────────────────────────────────────────
+  # JOB 2 : Déploiement sur Render
+  # ─────────────────────────────────────────
+  deploy:
+    name: Déploiement sur Render
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy to Render via webhook
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"

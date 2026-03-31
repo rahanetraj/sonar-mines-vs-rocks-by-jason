@@ -1,0 +1,13 @@
+model:
+  test_size: 0.2
+  random_state: 42
+  n_estimators: 100
+  max_depth: null
+
+mlflow:
+  experiment_name: "sonar-classification"
+  tracking_uri: "./mlruns"
+
+data:
+  path: "data/sonar.all-data.csv"
+  target_column: "Label"

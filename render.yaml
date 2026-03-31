@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sonar-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: MLFLOW_TRACKING_URI
+        value: ./mlruns
+    healthCheckPath: /health
+    plan: free

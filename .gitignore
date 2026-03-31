@@ -1,0 +1,56 @@
+# ─── Environnements Python ───────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Secrets & variables d'environnement ─────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Modèles générés (recréés par train.py / docker build) ───
+models/model.pkl
+models/scaler.pkl
+
+# ─── MLflow (runs locaux, régénérés à l'entraînement) ────────
+mlruns/
+
+# ─── Métriques et outputs générés ────────────────────────────
+metrics/
+outputs/
+
+# ─── Monitoring — rapports HTML générés ──────────────────────
+monitoring/reports/
+
+# ─── Jupyter ─────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ─── Tests ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ─── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDEs ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── DVC cache (pas le .dvc/config ni les .dvc pointers) ─────
+.dvc/cache/
+.dvc/tmp/

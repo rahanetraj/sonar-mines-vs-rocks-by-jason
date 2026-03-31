@@ -1,0 +1,42 @@
+stages:
+  prepare:
+    cmd: python src/train.py --stage prepare
+    deps:
+      - data/sonar.all-data.csv
+      - src/train.py
+    params:
+      - model.test_size
+      - model.random_state
+    outs:
+      - models/scaler.pkl
+
+  train:
+    cmd: python src/train.py --stage train
+    deps:
+      - data/sonar.all-data.csv
+      - src/train.py
+      - models/scaler.pkl
+    params:
+      - model.n_estimators
+      - model.max_depth
+      - model.random_state
+      - model.test_size
+    outs:
+      - models/model.pkl
+    metrics:
+      - metrics/train_metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: python src/evaluate.py
+    deps:
+      - data/sonar.all-data.csv
+      - src/evaluate.py
+      - models/model.pkl
+      - models/scaler.pkl
+    outs:
+      - outputs/confusion_matrix.png:
+          cache: false
+    metrics:
+      - metrics/eval_metrics.json:
+          cache: false

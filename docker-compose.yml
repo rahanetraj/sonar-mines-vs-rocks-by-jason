@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+
+  # --- Service API FastAPI ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sonar-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./models:/app/models        # modèles persistants
+      - ./mlruns:/app/mlruns        # runs MLflow partagés
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # --- Service MLflow Tracking Server ---
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    container_name: sonar-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns     # persistance des expériences
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri /mlflow/mlruns
+      --default-artifact-root /mlflow/mlruns
+    restart: unless-stopped
