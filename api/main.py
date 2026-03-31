@@ -165,7 +165,6 @@ async def lifespan(app: FastAPI):
         print("[API] Lancez d'abord : python src/train.py")
     
     # S'assurer que le dossier des rapports existe pour StaticFiles
-    (ROOT / "monitoring" / "reports").mkdir(parents=True, exist_ok=True)
     yield
     # Nettoyage (optionnel)
     app_state.clear()
@@ -188,7 +187,9 @@ app.add_middleware(
 )
 
 # --- Servir les rapports HTML statiques ---
-app.mount("/reports", StaticFiles(directory=str(ROOT / "monitoring" / "reports")), name="reports")
+REPORTS_DIR = ROOT / "monitoring" / "reports"
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
 
 
 # --- Endpoints ---
