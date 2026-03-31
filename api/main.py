@@ -7,10 +7,12 @@ import csv
 import json
 import os
 import sys
+import subprocess
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -33,8 +35,13 @@ DRIFT_METRICS   = ROOT / "monitoring" / "reports" / "drift_metrics.json"
 FEATURE_NAMES = [f"f{i}" for i in range(1, 61)]
 LOG_COLUMNS   = ["timestamp"] + FEATURE_NAMES + ["prediction", "confidence"]
 
-# Lock thread-safe pour l'écriture CSV
+# Lock thread-safe pour l'écriture CSV et le compteur
 _log_lock = threading.Lock()
+_counter_lock = threading.Lock()
+
+# État du monitoring
+prediction_counter = 0
+is_drift_running = False
 
 
 def _init_log_file() -> None:
@@ -58,6 +65,23 @@ def _append_prediction(features: list[float], prediction: str, confidence: float
     with _log_lock:
         with open(PREDICTIONS_LOG, "a", newline="") as f:
             csv.DictWriter(f, fieldnames=LOG_COLUMNS).writerow(row)
+
+
+def _run_drift_report_background():
+    """Lance le script Evidently en arrière-plan."""
+    global is_drift_running
+    try:
+        print("[MONITORING] Lancement du rapport de drift automatique...")
+        subprocess.run(
+            [sys.executable, str(ROOT / "monitoring" / "drift_report.py")],
+            capture_output=True,
+            timeout=120
+        )
+        print("[MONITORING] Rapport de drift terminé avec succès.")
+    except Exception as e:
+        print(f"[MONITORING] Erreur lors du rapport de drift : {e}")
+    finally:
+        is_drift_running = False
 
 
 # --- Modèles Pydantic ---
@@ -112,6 +136,21 @@ app_state: dict[str, Any] = {}
 async def lifespan(app: FastAPI):
     """Charge le modèle et le scaler une seule fois au démarrage de l'API."""
     _init_log_file()
+    
+    # Initialiser le compteur de prédictions à partir du CSV existant
+    global prediction_counter
+    try:
+        with _log_lock:
+            if PREDICTIONS_LOG.exists():
+                with open(PREDICTIONS_LOG, newline="") as f:
+                    # On soustrait 1 pour l'en-tête
+                    prediction_counter = sum(1 for _ in f) - 1
+                    if prediction_counter < 0: prediction_counter = 0
+        print(f"[API] Compteur de prédictions initialisé : {prediction_counter}")
+    except Exception as e:
+        print(f"[API] Erreur initialisation compteur : {e}")
+        prediction_counter = 0
+
     try:
         predictor = SonarPredictor()
         app_state["predictor"] = predictor
@@ -197,8 +236,20 @@ def predict(request: PredictRequest):
     # Log asynchrone (thread-safe, n'impacte pas le temps de réponse)
     try:
         _append_prediction(request.features, result["prediction"], result["confidence"])
-    except Exception:
-        pass  # Ne jamais bloquer la prédiction à cause du logging
+        
+        # Trigger drift report toutes les 10 prédictions
+        global prediction_counter, is_drift_running
+        with _counter_lock:
+            prediction_counter += 1
+            trigger_drift = (prediction_counter % 10 == 0)
+        
+        if trigger_drift and not is_drift_running:
+            is_drift_running = True
+            Thread(target=_run_drift_report_background, daemon=True).start()
+            print(f"[MONITORING] Trigger auto-drift activé (prédiction #{prediction_counter})")
+            
+    except Exception as e:
+        print(f"[API] Erreur logging/monitoring : {e}")
 
     return PredictResponse(**result)
 
@@ -212,6 +263,7 @@ def monitoring_stats():
     """
     Retourne des statistiques agrégées sur toutes les prédictions loggées.
     """
+    global prediction_counter
     try:
         if not PREDICTIONS_LOG.exists():
             return {
@@ -222,6 +274,7 @@ def monitoring_stats():
                 "rock_percentage"     : 0.0,
                 "avg_confidence"      : 0.0,
                 "last_prediction_time": None,
+                "next_drift_report_at": 10
             }
 
         rows: list[dict] = []
@@ -231,12 +284,19 @@ def monitoring_stats():
                 rows = list(reader)
 
         total      = len(rows)
+        # S'assurer que le compteur global est synchronisé
+        with _counter_lock:
+            prediction_counter = total
         mine_count = sum(1 for r in rows if r.get("prediction") == "Mine")
         rock_count = total - mine_count
         avg_conf   = (
             sum(float(r["confidence"]) for r in rows) / total if total else 0.0
         )
         last_time  = rows[-1]["timestamp"] if rows else None
+
+        # Calculer le nombre de prédictions restantes avant le prochain rapport
+        next_at = ((total // 10) + 1) * 10
+        remaining = next_at - total
 
         return {
             "total_predictions"   : total,
@@ -246,6 +306,7 @@ def monitoring_stats():
             "rock_percentage"     : round(rock_count / total * 100, 2) if total else 0.0,
             "avg_confidence"      : round(avg_conf, 4),
             "last_prediction_time": last_time,
+            "next_drift_report_at": remaining
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur stats : {str(e)}")
@@ -291,6 +352,8 @@ def monitoring_drift():
                 "message": "No drift report yet. Run monitoring/drift_report.py first"
             }
         with open(DRIFT_METRICS) as f:
-            return json.load(f)
+            data = json.load(f)
+            data["auto_generated"] = True
+            return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur drift : {str(e)}")

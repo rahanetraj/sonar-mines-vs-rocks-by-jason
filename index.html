@@ -652,6 +652,7 @@
           <div class="stat-row"><span class="stat-label">🪨 Rochers</span><span class="stat-value" style="color:var(--rock)" id="s-rock-pct">—</span></div>
           <div class="stat-row"><span class="stat-label">Confiance moyenne</span><span class="stat-value" id="s-conf">—</span></div>
           <div class="stat-row"><span class="stat-label">Dernière prédiction</span><span class="stat-value" id="s-last" style="font-size:.78rem">—</span></div>
+          <div class="stat-row" style="border-bottom:none;"><span class="stat-label">Prochain rapport dans</span><span class="stat-value" style="color:var(--accent)" id="s-next-drift">—</span></div>
         </div>
         <div class="refresh-ts" id="stats-ts"></div>
       </div>
@@ -951,6 +952,9 @@ function showResult(data) {
 
   /* historique */
   addHistory({ ts, prediction: data.prediction, confidence: conf });
+
+  /* rafraîchir le monitoring immédiatement */
+  refreshMonitoring();
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1072,6 +1076,7 @@ async function loadStats() {
     document.getElementById('s-last').textContent     = d.last_prediction_time
       ? new Date(d.last_prediction_time + 'Z').toLocaleString('fr-FR')
       : '—';
+    document.getElementById('s-next-drift').textContent = `${d.next_drift_report_at} prédictions`;
 
     document.getElementById('stats-ts').textContent =
       'Mis à jour : ' + new Date().toLocaleTimeString('fr-FR');
@@ -1122,6 +1127,9 @@ async function loadDrift() {
           <span class="stat-label">Rapport généré</span>
           <span class="stat-value" style="font-size:.76rem;">${ts}</span>
         </div>
+        <p style="font-size:.7rem; color:var(--muted); margin-top:12px; font-style:italic;">
+          ⚙️ Rapport généré automatiquement toutes les 10 prédictions.
+        </p>
         ${featNames.length ? `<div class="feat-badges">${badges}</div>` : ''}
       `;
     }
