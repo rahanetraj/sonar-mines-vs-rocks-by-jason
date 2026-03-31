@@ -359,13 +359,16 @@ def monitoring_drift(response: Response):
     Générez d'abord le rapport : python monitoring/drift_report.py
     """
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    global is_drift_running
     try:
         if not DRIFT_METRICS.exists():
             return {
+                "is_running": is_drift_running,
                 "message": "No drift report yet. Run monitoring/drift_report.py first"
             }
         with open(DRIFT_METRICS) as f:
             data = json.load(f)
+            data["is_running"] = is_drift_running
             data["auto_generated"] = True
             return data
     except Exception as e:

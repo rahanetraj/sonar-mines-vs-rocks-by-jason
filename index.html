@@ -104,6 +104,7 @@
     .drift-badge.ok  { background: rgba(63,185,80,.15);  color: var(--drift-ok);  border: 1px solid var(--drift-ok); }
     .drift-badge.bad { background: rgba(248,81,73,.15);  color: var(--drift-bad); border: 1px solid var(--drift-bad); }
     .drift-badge.unk { background: rgba(139,148,158,.12); color: var(--drift-unk); border: 1px solid var(--drift-unk); }
+    .drift-badge.loading { background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid var(--accent); }
 
     /* drift score bar */
     .score-track {
@@ -1117,10 +1118,19 @@ async function loadDrift() {
     if (!resp.ok) return;
     const d = await resp.json();
     const el = document.getElementById('drift-content');
+    const isRunning = d.is_running;
 
-    if (d.message) {
+    if (d.message && !isRunning) {
       el.innerHTML = `<p style="color:var(--muted);font-size:.875rem;">⚠ Aucun rapport de drift disponible.<br>
         <small>Lancez : <code>python monitoring/drift_report.py</code></small></p>`;
+    } else if (isRunning && d.message) {
+      el.innerHTML = `
+        <div style="text-align:center;padding:20px 0;">
+          <div class="spinner" style="display:inline-block;margin-bottom:10px;border-top-color:var(--accent);"></div>
+          <p style="color:var(--accent);font-size:.85rem;font-weight:600;">Génération du rapport en cours…</p>
+          <p style="color:var(--muted);font-size:.75rem;margin-top:5px;">Cela peut prendre environ 30 secondes.</p>
+        </div>
+      `;
     } else {
       const detected  = d.drift_detected;
       const score     = Math.round((d.drift_score || 0) * 100);
@@ -1130,14 +1140,16 @@ async function loadDrift() {
 
       const badgeCls  = detected ? 'bad' : 'ok';
       const badgeTxt  = detected ? '⚠ DRIFT DÉTECTÉ' : '✅ PAS DE DRIFT';
+      const runBadge  = isRunning ? `<span class="drift-badge loading" style="margin-left:8px;font-size:.65rem;vertical-align:middle;padding:2px 8px;">🔄 MISE À JOUR…</span>` : '';
 
       const badges = featNames.map(f =>
         `<span class="feat-badge">${f}</span>`
       ).join('');
 
       el.innerHTML = `
-        <div style="margin-bottom:14px;">
+        <div style="margin-bottom:14px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
           <span class="drift-badge ${badgeCls}">${badgeTxt}</span>
+          ${runBadge}
         </div>
         <div style="font-size:.82rem;color:var(--muted);margin-bottom:4px;">
           Score de drift
