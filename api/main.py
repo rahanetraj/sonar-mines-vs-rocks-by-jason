@@ -17,6 +17,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 # Ajout du répertoire racine au PYTHONPATH pour importer src.predict
@@ -162,6 +163,9 @@ async def lifespan(app: FastAPI):
         app_state["model_loaded"] = False
         print(f"[API] ERREUR : modèle introuvable — {e}")
         print("[API] Lancez d'abord : python src/train.py")
+    
+    # S'assurer que le dossier des rapports existe pour StaticFiles
+    (ROOT / "monitoring" / "reports").mkdir(parents=True, exist_ok=True)
     yield
     # Nettoyage (optionnel)
     app_state.clear()
@@ -182,6 +186,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Accept"],
 )
+
+# --- Servir les rapports HTML statiques ---
+app.mount("/reports", StaticFiles(directory=str(ROOT / "monitoring" / "reports")), name="reports")
 
 
 # --- Endpoints ---

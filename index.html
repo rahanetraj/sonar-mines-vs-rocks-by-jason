@@ -523,6 +523,29 @@
       box-shadow: var(--shadow);
     }
     #toast.show { transform: translateX(-50%) translateY(0); }
+    
+    /* ── Monitoring buttons ───────────────────────────────── */
+    .monitor-btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .btn.small {
+      font-size: .75rem;
+      padding: 6px 10px;
+      flex: 1;
+      text-decoration: none;
+      text-align: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn.small:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -1133,6 +1156,10 @@ async function loadDrift() {
           ⚙️ Rapport généré automatiquement toutes les 10 prédictions.
         </p>
         ${featNames.length ? `<div class="feat-badges">${badges}</div>` : ''}
+        <div class="monitor-btn-row">
+          <a href="${API_URL}/reports/drift_report.html?cb=${Date.now()}" target="_blank" class="btn small">📊 Rapport Drift</a>
+          <a href="${API_URL}/reports/quality_report.html?cb=${Date.now()}" target="_blank" class="btn small">✨ Qualité Data</a>
+        </div>
       `;
     }
 
