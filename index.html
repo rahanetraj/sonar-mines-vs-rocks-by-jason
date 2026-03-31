@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sonar Classifier — Mines vs Rocks</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --mine:      #f85149;
+      --mine-bg:   rgba(248,81,73,.13);
+      --rock:      #3fb950;
+      --rock-bg:   rgba(63,185,80,.13);
+      --warn:      #d29922;
+      --radius:    10px;
+      --shadow:    0 4px 24px rgba(0,0,0,.5);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding-bottom: 60px;
+    }
+
+    /* ── Header ───────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 32px 24px 28px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% -20%, rgba(88,166,255,.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    header h1 {
+      font-size: clamp(1.5rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, #58a6ff, #a371f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: .95rem;
+      letter-spacing: .3px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--rock);
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: .4; }
+    }
+
+    /* ── Layout ───────────────────────────────────────────── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-top: 24px;
+    }
+
+    section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    section h2 span { font-size: 1.1rem; }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .btn:hover  { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.08); }
+    .btn:active { transform: scale(.97); }
+    .btn.mine   { border-color: var(--mine); color: var(--mine); }
+    .btn.mine:hover { background: rgba(248,81,73,.1); }
+    .btn.rock   { border-color: var(--rock); color: var(--rock); }
+    .btn.rock:hover { background: rgba(63,185,80,.1); }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0d1117;
+      font-size: 1.05rem;
+      padding: 14px 36px;
+      border-radius: 8px;
+      font-weight: 700;
+      letter-spacing: .3px;
+      box-shadow: 0 0 20px rgba(88,166,255,.3);
+    }
+    .btn.primary:hover { background: #79c0ff; box-shadow: 0 0 30px rgba(88,166,255,.5); }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    /* ── Sliders grid ─────────────────────────────────────── */
+    .sliders-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 12px 8px;
+    }
+    @media (max-width: 900px) { .sliders-grid { grid-template-columns: repeat(6, 1fr); } }
+    @media (max-width: 560px) { .sliders-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    .slider-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .slider-item label {
+      font-size: .7rem;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    .slider-item input[type=range] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    .slider-item input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px rgba(88,166,255,.6);
+      transition: transform .1s;
+    }
+    .slider-item input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+    .slider-item .val {
+      font-size: .68rem;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      min-width: 36px;
+      text-align: center;
+    }
+
+    /* ── JSON paste area ──────────────────────────────────── */
+    #json-zone {
+      display: none;
+      margin-top: 16px;
+    }
+    #json-zone.open { display: block; }
+    #json-zone textarea {
+      width: 100%;
+      height: 90px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      font-size: .8rem;
+      padding: 10px 12px;
+      resize: vertical;
+      outline: none;
+    }
+    #json-zone textarea:focus { border-color: var(--accent); }
+    #json-error {
+      color: var(--mine);
+      font-size: .8rem;
+      margin-top: 6px;
+      min-height: 18px;
+    }
+
+    /* ── Chart ────────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+    }
+
+    /* ── Predict button zone ──────────────────────────────── */
+    .predict-zone {
+      text-align: center;
+      padding: 32px 0 16px;
+    }
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 2px solid rgba(13,17,23,.4);
+      border-top-color: #0d1117;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn.primary.loading .spinner  { display: block; }
+    .btn.primary.loading .btn-text { display: none; }
+
+    /* ── Result card ──────────────────────────────────────── */
+    #result-section { display: none; }
+    #result-section.visible { display: block; animation: fadeUp .4s ease; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-card {
+      border-radius: var(--radius);
+      border: 2px solid;
+      padding: 28px 24px;
+      text-align: center;
+      transition: all .3s;
+    }
+    .result-card.mine { border-color: var(--mine); background: var(--mine-bg); }
+    .result-card.rock { border-color: var(--rock); background: var(--rock-bg); }
+
+    .result-emoji { font-size: 3.5rem; margin-bottom: 8px; line-height: 1; }
+    .result-label {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .result-card.mine .result-label { color: var(--mine); }
+    .result-card.rock .result-label { color: var(--rock); }
+    .result-ts {
+      font-size: .8rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Confidence gauge */
+    .gauge-wrap { margin: 24px 0 8px; }
+    .gauge-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .82rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .gauge-track {
+      height: 12px;
+      background: var(--surface2);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .gauge-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+      background: linear-gradient(90deg, #58a6ff, #a371f7);
+    }
+    .result-card.mine .gauge-fill { background: linear-gradient(90deg, var(--warn), var(--mine)); }
+    .result-card.rock .gauge-fill { background: linear-gradient(90deg, #3fb950, #26a641); }
+
+    /* Probability bars */
+    .proba-bars {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .proba-item { text-align: left; }
+    .proba-item .p-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: .82rem;
+      margin-bottom: 5px;
+    }
+    .proba-item .p-name { font-weight: 600; }
+    .proba-item .p-val  { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .proba-track {
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .proba-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width .8s cubic-bezier(.4,0,.2,1);
+    }
+    .proba-fill.mine { background: var(--mine); }
+    .proba-fill.rock { background: var(--rock); }
+
+    /* ── History table ────────────────────────────────────── */
+    .hist-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .hist-header h2 { margin-bottom: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .875rem;
+    }
+    thead th {
+      text-align: left;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td {
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .5px;
+    }
+    .badge.mine { background: var(--mine-bg); color: var(--mine); border: 1px solid var(--mine); }
+    .badge.rock { background: var(--rock-bg); color: var(--rock); border: 1px solid var(--rock); }
+    .empty-hist {
+      text-align: center;
+      color: var(--muted);
+      padding: 28px;
+      font-size: .875rem;
+    }
+
+    /* ── Error toast ──────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #2d1b1b;
+      border: 1px solid var(--mine);
+      color: var(--mine);
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: .875rem;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+      transition: transform .3s ease;
+      z-index: 999;
+      box-shadow: var(--shadow);
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────── -->
+<header>
+  <h1>🌊 Sonar Classifier — Mines vs Rocks</h1>
+  <p><span class="status-dot"></span>Détection de mines sous-marines par signal sonar</p>
+  <p style="margin-top:6px;font-size:.8rem;color:#484f58;">
+    API : <code style="color:#58a6ff;">sonar-mines-vs-rocks-by-jason.onrender.com</code>
+  </p>
+</header>
+
+<div class="container">
+
+  <!-- ── Entrée des signaux ──────────────────────────────── -->
+  <section>
+    <h2><span>🎛️</span> Entrée du signal sonar</h2>
+
+    <div class="btn-row">
+      <button class="btn mine" onclick="loadMine()">💣 Exemple Mine</button>
+      <button class="btn rock" onclick="loadRock()">🪨 Exemple Rocher</button>
+      <button class="btn"      onclick="randomize()">🎲 Aléatoire</button>
+      <button class="btn"      onclick="resetAll()">↺ Réinitialiser</button>
+      <button class="btn"      onclick="toggleJson()" id="btn-json">📋 Coller JSON</button>
+    </div>
+
+    <!-- JSON paste zone -->
+    <div id="json-zone">
+      <textarea id="json-input" placeholder='Coller ici un tableau de 60 valeurs, ex: [0.02, 0.037, ...]'></textarea>
+      <div id="json-error"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button class="btn" onclick="applyJson()">✔ Appliquer</button>
+        <button class="btn" onclick="toggleJson()">✕ Fermer</button>
+      </div>
+    </div>
+
+    <!-- 60 sliders -->
+    <div class="sliders-grid" id="sliders-grid"></div>
+  </section>
+
+  <!-- ── Visualisation ───────────────────────────────────── -->
+  <section>
+    <h2><span>📈</span> Signal sonar — profil des fréquences</h2>
+    <div class="chart-wrap">
+      <canvas id="signalChart"></canvas>
+    </div>
+  </section>
+
+  <!-- ── Bouton analyse ─────────────────────────────────── -->
+  <div class="predict-zone">
+    <button class="btn primary" id="predict-btn" onclick="predict()">
+      <div class="spinner"></div>
+      <span class="btn-text">🔍 Analyser le signal</span>
+    </button>
+  </div>
+
+  <!-- ── Résultat ────────────────────────────────────────── -->
+  <section id="result-section">
+    <h2><span>🎯</span> Résultat de l'analyse</h2>
+    <div class="result-card" id="result-card">
+      <div class="result-emoji" id="result-emoji"></div>
+      <div class="result-label" id="result-label"></div>
+      <div class="result-ts"   id="result-ts"></div>
+      <div class="gauge-wrap">
+        <div class="gauge-label">
+          <span>Confiance</span>
+          <span id="gauge-pct">—</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-fill" id="gauge-fill" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="proba-bars">
+        <div class="proba-item">
+          <div class="p-head">
+            <span class="p-name" style="color:var(--mine)">💣 Mine</span>
+            <span class="p-val" id="proba-mine-val">—</span>
+          </div>
+          <div class="proba-track">
+            <div class="proba-fill mine" id="proba-mine-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="proba-item">
+          <div class="p-head">
+            <span class="p-name" style="color:var(--rock)">🪨 Rocher</span>
+            <span class="p-val" id="proba-rock-val">—</span>
+          </div>
+          <div class="proba-track">
+            <div class="proba-fill rock" id="proba-rock-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Historique ──────────────────────────────────────── -->
+  <section>
+    <div class="hist-header">
+      <h2><span>🕑</span> Historique des prédictions</h2>
+      <button class="btn" onclick="clearHistory()">🗑 Effacer</button>
+    </div>
+    <div id="history-container">
+      <div class="empty-hist">Aucune prédiction pour l'instant.</div>
+    </div>
+  </section>
+
+</div>
+
+<!-- Toast erreur -->
+<div id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   CONFIGURATION
+══════════════════════════════════════════════════════ */
+const API_URL = 'https://sonar-mines-vs-rocks-by-jason.onrender.com';
+const N = 60;
+
+/* ── Données de référence ─────────────────────────────
+   Moyennes par classe utilisées comme lignes de référence
+   sur le graphique (calculées depuis le dataset UCI).   */
+const MINE_AVG = [
+  0.0434,0.0598,0.0877,0.0978,0.1185,0.1432,0.1734,0.2107,0.2797,0.3139,
+  0.3459,0.3610,0.3779,0.3703,0.3882,0.3870,0.4090,0.4161,0.4569,0.4798,
+  0.5001,0.5001,0.5146,0.5304,0.5440,0.5441,0.5486,0.5460,0.5261,0.4903,
+  0.4440,0.3830,0.3220,0.2739,0.2450,0.2231,0.2135,0.2075,0.1882,0.1685,
+  0.1536,0.1432,0.1397,0.1302,0.1262,0.1128,0.0988,0.0879,0.0756,0.0648,
+  0.0554,0.0467,0.0378,0.0313,0.0250,0.0211,0.0172,0.0138,0.0116,0.0099
+];
+const ROCK_AVG = [
+  0.0399,0.0514,0.0735,0.0749,0.0987,0.1167,0.1427,0.1801,0.2326,0.2718,
+  0.2984,0.3066,0.3188,0.3156,0.3337,0.3317,0.3531,0.3636,0.3874,0.4035,
+  0.4077,0.3973,0.3958,0.3977,0.4004,0.3952,0.3879,0.3661,0.3369,0.3012,
+  0.2724,0.2481,0.2165,0.1923,0.1766,0.1688,0.1644,0.1599,0.1517,0.1379,
+  0.1259,0.1189,0.1155,0.1063,0.1023,0.0892,0.0787,0.0699,0.0608,0.0520,
+  0.0444,0.0375,0.0309,0.0257,0.0207,0.0177,0.0148,0.0120,0.0103,0.0089
+];
+
+/* Exemples réels issus du dataset */
+const EXAMPLE_MINE = [
+  0.0200,0.0371,0.0428,0.0207,0.0954,0.0986,0.1539,0.1601,0.3109,0.2111,
+  0.1609,0.1582,0.2238,0.0645,0.0660,0.2273,0.3100,0.2999,0.5078,0.4797,
+  0.5783,0.5071,0.4328,0.5550,0.6711,0.6415,0.7104,0.8080,0.6791,0.3857,
+  0.1307,0.2604,0.5121,0.7547,0.8537,0.8507,0.6692,0.6097,0.4943,0.2744,
+  0.0510,0.2834,0.2825,0.4256,0.2641,0.1386,0.1051,0.1343,0.0383,0.0324,
+  0.0232,0.0027,0.0065,0.0159,0.0072,0.0167,0.0180,0.0084,0.0090,0.0032
+];
+const EXAMPLE_ROCK = [
+  0.0262,0.0582,0.1099,0.1083,0.0974,0.2280,0.2431,0.3771,0.5598,0.6194,
+  0.6333,0.7060,0.5544,0.5320,0.6479,0.6931,0.6759,0.7551,0.8929,0.8619,
+  0.7974,0.6737,0.4293,0.3648,0.5331,0.2413,0.5070,0.8533,0.6036,0.8514,
+  0.8512,0.5045,0.1862,0.2709,0.4232,0.3043,0.6116,0.6756,0.5375,0.4719,
+  0.4647,0.2587,0.2129,0.2222,0.2111,0.0176,0.1348,0.0744,0.0130,0.0106,
+  0.0033,0.0232,0.0166,0.0095,0.0180,0.0244,0.0316,0.0164,0.0095,0.0078
+];
+
+/* ══════════════════════════════════════════════════════
+   ÉTAT
+══════════════════════════════════════════════════════ */
+const values   = new Array(N).fill(0);
+const history  = [];
+
+/* ══════════════════════════════════════════════════════
+   SLIDERS
+══════════════════════════════════════════════════════ */
+function buildSliders() {
+  const grid = document.getElementById('sliders-grid');
+  for (let i = 0; i < N; i++) {
+    const item = document.createElement('div');
+    item.className = 'slider-item';
+    item.innerHTML = `
+      <label>F${i + 1}</label>
+      <input type="range" min="0" max="1" step="0.001"
+             value="0" id="sl_${i}" oninput="onSlider(${i}, this.value)">
+      <span class="val" id="val_${i}">0.000</span>`;
+    grid.appendChild(item);
+  }
+}
+
+function onSlider(i, v) {
+  values[i] = parseFloat(v);
+  document.getElementById(`val_${i}`).textContent = parseFloat(v).toFixed(3);
+  updateChart();
+}
+
+function setValues(arr) {
+  for (let i = 0; i < N; i++) {
+    const v = Math.min(1, Math.max(0, parseFloat(arr[i]) || 0));
+    values[i] = v;
+    const sl = document.getElementById(`sl_${i}`);
+    const vl = document.getElementById(`val_${i}`);
+    if (sl) sl.value = v;
+    if (vl) vl.textContent = v.toFixed(3);
+  }
+  updateChart();
+}
+
+function loadMine()   { setValues(EXAMPLE_MINE); }
+function loadRock()   { setValues(EXAMPLE_ROCK); }
+function resetAll()   { setValues(new Array(N).fill(0)); }
+function randomize()  { setValues(Array.from({length: N}, () => Math.random())); }
+
+/* ══════════════════════════════════════════════════════
+   JSON PASTE
+══════════════════════════════════════════════════════ */
+function toggleJson() {
+  const zone = document.getElementById('json-zone');
+  zone.classList.toggle('open');
+  document.getElementById('json-error').textContent = '';
+}
+
+function applyJson() {
+  const raw = document.getElementById('json-input').value.trim();
+  const errEl = document.getElementById('json-error');
+  try {
+    let arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) throw new Error('Doit être un tableau JSON.');
+    if (arr.length !== N)    throw new Error(`${arr.length} valeurs reçues, ${N} attendues.`);
+    setValues(arr);
+    errEl.textContent = '';
+    toggleJson();
+  } catch (e) {
+    errEl.textContent = '⚠ ' + e.message;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   CHART.JS
+══════════════════════════════════════════════════════ */
+let chart;
+const labels = Array.from({length: N}, (_, i) => `F${i+1}`);
+
+function buildChart() {
+  const ctx = document.getElementById('signalChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Signal actuel',
+          data: [...values],
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88,166,255,.08)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: true,
+          order: 1,
+        },
+        {
+          label: 'Moyenne Mine',
+          data: MINE_AVG,
+          borderColor: 'rgba(248,81,73,.55)',
+          borderWidth: 1.5,
+          borderDash: [5, 4],
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          order: 2,
+        },
+        {
+          label: 'Moyenne Rocher',
+          data: ROCK_AVG,
+          borderColor: 'rgba(63,185,80,.55)',
+          borderWidth: 1.5,
+          borderDash: [5, 4],
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          order: 3,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 80 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#8b949e',
+            font: { size: 11 },
+            boxWidth: 20,
+          }
+        },
+        tooltip: {
+          backgroundColor: '#161b22',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          titleColor: '#e6edf3',
+          bodyColor: '#8b949e',
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#484f58', maxTicksLimit: 12, font: { size: 10 } },
+          grid:  { color: 'rgba(48,54,61,.5)' }
+        },
+        y: {
+          min: 0, max: 1,
+          ticks: { color: '#484f58', font: { size: 10 } },
+          grid:  { color: 'rgba(48,54,61,.5)' }
+        }
+      }
+    }
+  });
+}
+
+function updateChart() {
+  if (!chart) return;
+  chart.data.datasets[0].data = [...values];
+  chart.update('none');
+}
+
+/* ══════════════════════════════════════════════════════
+   PRÉDICTION
+══════════════════════════════════════════════════════ */
+async function predict() {
+  const btn = document.getElementById('predict-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch(`${API_URL}/predict`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify({ features: [...values] })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `Erreur HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    showResult(data);
+
+  } catch (e) {
+    showToast('❌ ' + (e.message.includes('Failed to fetch')
+      ? 'Impossible de joindre l\'API. Vérifiez votre connexion ou attendez le démarrage de Render.'
+      : e.message));
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   AFFICHAGE RÉSULTAT
+══════════════════════════════════════════════════════ */
+function showResult(data) {
+  const isMine = data.prediction === 'Mine';
+  const conf   = data.confidence;
+  const pMine  = data.probabilities.Mine;
+  const pRock  = data.probabilities.Rock;
+  const ts     = new Date().toLocaleTimeString('fr-FR');
+
+  /* card */
+  const card = document.getElementById('result-card');
+  card.className = 'result-card ' + (isMine ? 'mine' : 'rock');
+
+  document.getElementById('result-emoji').textContent = isMine ? '💣' : '🪨';
+  document.getElementById('result-label').textContent = isMine ? 'MINE DÉTECTÉE' : 'ROCHER INOFFENSIF';
+  document.getElementById('result-ts').textContent    = `Analysé à ${ts}`;
+
+  /* gauge */
+  const pct = Math.round(conf * 100);
+  document.getElementById('gauge-pct').textContent   = `${pct}%`;
+  document.getElementById('gauge-fill').style.width  = `${pct}%`;
+
+  /* barres */
+  const pmPct = Math.round(pMine * 100);
+  const prPct = Math.round(pRock * 100);
+  document.getElementById('proba-mine-val').textContent = `${pmPct}%`;
+  document.getElementById('proba-rock-val').textContent = `${prPct}%`;
+  document.getElementById('proba-mine-bar').style.width = `${pmPct}%`;
+  document.getElementById('proba-rock-bar').style.width = `${prPct}%`;
+
+  /* affichage section */
+  const sec = document.getElementById('result-section');
+  sec.classList.remove('visible');
+  void sec.offsetWidth; // reflow pour relancer animation
+  sec.classList.add('visible');
+  sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  /* historique */
+  addHistory({ ts, prediction: data.prediction, confidence: conf });
+}
+
+/* ══════════════════════════════════════════════════════
+   HISTORIQUE
+══════════════════════════════════════════════════════ */
+function addHistory(entry) {
+  history.unshift(entry);
+  if (history.length > 5) history.pop();
+  renderHistory();
+}
+
+function clearHistory() {
+  history.length = 0;
+  renderHistory();
+}
+
+function renderHistory() {
+  const container = document.getElementById('history-container');
+  if (history.length === 0) {
+    container.innerHTML = '<div class="empty-hist">Aucune prédiction pour l\'instant.</div>';
+    return;
+  }
+  const rows = history.map(h => {
+    const isMine = h.prediction === 'Mine';
+    const cls    = isMine ? 'mine' : 'rock';
+    const emoji  = isMine ? '💣' : '🪨';
+    const label  = isMine ? 'Mine' : 'Rocher';
+    const pct    = Math.round(h.confidence * 100);
+    return `<tr>
+      <td>${h.ts}</td>
+      <td><span class="badge ${cls}">${emoji} ${label}</span></td>
+      <td>${pct}%</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Heure</th>
+        <th>Résultat</th>
+        <th>Confiance</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════════ */
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
+}
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
+buildSliders();
+buildChart();
+</script>
+</body>
+</html>
