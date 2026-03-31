@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 # Ajout du répertoire racine au PYTHONPATH pour importer src.predict
@@ -92,6 +93,15 @@ app = FastAPI(
     description="Classifie des signaux sonar en Mine (M) ou Roche (R) via un RandomForest.",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# --- CORS : autorise les requêtes depuis n'importe quelle origine ---
+# Nécessaire pour le frontend (fichier local, GitHub Pages, etc.)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 
