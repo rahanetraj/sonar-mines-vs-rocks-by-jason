@@ -46,4 +46,12 @@ jobs:
     steps:
       - name: Deploy to Render via webhook
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK non configuré — déploiement ignoré."
+            echo "Ajouter le secret dans GitHub : Settings → Secrets → Actions"
+            exit 0
+          fi
+          curl --fail -X POST "$RENDER_DEPLOY_HOOK"
+          echo "✅ Déploiement Render déclenché."
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
