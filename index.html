@@ -953,8 +953,8 @@ function showResult(data) {
   /* historique */
   addHistory({ ts, prediction: data.prediction, confidence: conf });
 
-  /* rafraîchir le monitoring immédiatement */
-  refreshMonitoring();
+  /* rafraîchir le monitoring avec un léger délai (500ms) pour laisser le temps au backend d'écrire le log */
+  setTimeout(refreshMonitoring, 500);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1063,7 +1063,8 @@ function buildDonut(mineCount, rockCount) {
 
 async function loadStats() {
   try {
-    const resp = await fetch(`${API_URL}/monitoring/stats`);
+    const cb = Date.now();
+    const resp = await fetch(`${API_URL}/monitoring/stats?cb=${cb}`);
     if (!resp.ok) return;
     const d = await resp.json();
 
@@ -1088,7 +1089,8 @@ async function loadStats() {
 ══════════════════════════════════════════════════════ */
 async function loadDrift() {
   try {
-    const resp = await fetch(`${API_URL}/monitoring/drift`);
+    const cb = Date.now();
+    const resp = await fetch(`${API_URL}/monitoring/drift?cb=${cb}`);
     if (!resp.ok) return;
     const d = await resp.json();
     const el = document.getElementById('drift-content');

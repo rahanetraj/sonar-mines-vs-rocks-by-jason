@@ -15,7 +15,7 @@ from pathlib import Path
 from threading import Thread
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -116,6 +116,7 @@ class PredictResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model: str
+    model_config = {"protected_namespaces": ()}
 
 
 class InfoResponse(BaseModel):
@@ -125,6 +126,7 @@ class InfoResponse(BaseModel):
     features_count: int
     classes: list[str]
     mlflow_experiment: str
+    model_config = {"protected_namespaces": ()}
 
 
 # --- État global de l'application ---
@@ -259,10 +261,11 @@ def predict(request: PredictRequest):
 # ─────────────────────────────────────────
 
 @app.get("/monitoring/stats", tags=["Monitoring"])
-def monitoring_stats():
+def monitoring_stats(response: Response):
     """
     Retourne des statistiques agrégées sur toutes les prédictions loggées.
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     global prediction_counter
     try:
         if not PREDICTIONS_LOG.exists():
@@ -313,10 +316,11 @@ def monitoring_stats():
 
 
 @app.get("/monitoring/recent", tags=["Monitoring"])
-def monitoring_recent():
+def monitoring_recent(response: Response):
     """
     Retourne les 20 dernières prédictions sous forme de tableau JSON.
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     try:
         if not PREDICTIONS_LOG.exists():
             return []
@@ -341,11 +345,12 @@ def monitoring_recent():
 
 
 @app.get("/monitoring/drift", tags=["Monitoring"])
-def monitoring_drift():
+def monitoring_drift(response: Response):
     """
     Retourne les métriques de drift depuis le dernier rapport Evidently.
     Générez d'abord le rapport : python monitoring/drift_report.py
     """
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     try:
         if not DRIFT_METRICS.exists():
             return {
